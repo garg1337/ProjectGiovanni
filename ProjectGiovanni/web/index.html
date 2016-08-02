@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>PkmnGO Map</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        height: 100%;
+      }
+      #legend {
+        background: #FFF;
+        padding: 10px;
+        margin: 5px;
+        font-size: 12px;
+        font-family: Arial, sans-serif;
+        width: 150px;
+      }
+      #legend #legend-list {
+        height: 150px;
+        overflow: auto;
+      }
+      #legend li {
+        list-style-type: none;
+      }
+      #legend-title h3 {
+        margin-top: 5px;
+        margin-bottom: 5px;
+      }
+      #legend-title img {
+        width: 20px;
+        vertical-align: -5px;
+        -webkit-transform: rotate(180deg);
+        -moz-transform: rotate(180deg);
+        -ms-transform: rotate(180deg);
+        -o-transform: rotate(180deg);
+        transform: rotate(180deg);
+      }
+      #legend-title .show {
+       -webkit-transform: rotate(0deg);
+       -moz-transform: rotate(0deg);
+       -ms-transform: rotate(0deg);
+       -o-transform: rotate(0deg);
+       transform: rotate(0deg);
+      }
+      #legend-hide-gym, #legend-hide-pokestop {
+       font-size: 13px;
+       font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="capture"></div>
+    <script>
+      function loadScript(src) {
+        var element = document.createElement("script");
+        element.src = src;
+        document.body.appendChild(element);
+      }
+
+      function getFile(path, asynch, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", path, asynch);
+        xhr.onload = function (e) {
+          if (xhr.readyState === 4) {
+            callback(xhr.responseText);
+          }
+        };
+        xhr.onerror = function (e) {
+          console.error(xhr.status);
+        };
+        xhr.send(null);
+      }
+
+      function cap(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+      }
+
+      function pad(n, width, z) {
+        z = z || '0';
+        n = n + '';
+        return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+      }
+
+      function formatSeconds(s) {
+        var date = new Date(null);
+        date.setSeconds(s);
+
+        return (date.getUTCMinutes() > 0 ? date.getUTCMinutes() + "m " : "") + date.getUTCSeconds() + "s";
+      }
+
+      function getImage(p) {
+        var name = p.name;
+        if (p.name == "Nidoran F") {
+          name = "Nidoran";
+        }
+        else if (name == "Nidoran M") {
+          name = "Nidorano";
+        }
+        else if (p.name == "Mr. Mime") {
+          name = "Mr-Mime";
+        }
+        var imgUrl = "http://icons.iconarchive.com/icons/hektakun/pokemon/72/" + pad(p.id, 3) + "-" + cap(name) + "-icon.png";
+        return imgUrl;
+      }
+
+      function getTeamFromNum(id){
+       // At least I'm pretty sure that's it. I could be wrong and then I'd be displaying the wrong owner team of gyms.
+       var team = 'Gym';
+       switch (id) {
+        case 1:
+         team = 'Mystic';
+         break;
+        case 2:
+         team = 'Valor';
+         break;
+        case 3:
+         team = 'Instinct';
+         break;
+       }
+       return team;
+      }
+
+      function copyToClipboard(text) {
+        if (window.clipboardData && window.clipboardData.setData) {
+            // IE specific code path to prevent textarea being shown while dialog is visible.
+            return clipboardData.setData("Text", text);
+        } else if (document.queryCommandSupported && document.queryCommandSupported("copy")) {
+            var textarea = document.createElement("textarea");
+            textarea.textContent = text;
+            textarea.style.position = "fixed";  // Prevent scrolling to bottom of page in MS Edge.
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                return document.execCommand("copy");  // Security exception may be thrown by some browsers.
+            } catch (ex) {
+                console.warn("Copy to clipboard failed.", ex);
+                return false;
+            } finally {
+                document.body.removeChild(textarea);
+            }
+        }
+      }
+
+      function toggleLayer(checked, pkmn) {
+        if (checked) {
+            hidden_layers.push(pkmn);
+        } else {
+            var index = hidden_layers.indexOf(pkmn);
+            if(index > -1){
+              hidden_layers.splice(index,1);
+            }
+        }
+        refreshData();
+      }
+
+      function hideAllInfoWindows(map) {
+         markers.forEach(function(marker) {
+           marker.infowindow.close(map, marker);
+        });
+      }
+
+      function toggleLegend() {
+        var content = document.getElementById("legend-content");
+        var icon = document.getElementById("legend-icon");
+        if(content.style.display == "none"){
+          content.style.display = "block";
+          icon.classList.remove("show");
+        } else {
+          content.style.display = "none";
+          icon.classList.add("show");
+        }
+      }
+
+      function getGym() {
+         // get Gym data
+         getFile("gym.json", true, function(response) {
+           console.log("Refreshing gym data...");
+           gymdata = JSON.parse(response);
+
+           // Clear markers
+           for (var gymId in fort_markers['gym']) {
+             if (!fort_markers['gym'].hasOwnProperty(gymId)) {
+               continue;
+             }
+             var marker = markers[gymId];
+             marker.listeners[0].remove();
+             marker.listeners[1].remove();
+             marker.setMap(null);
+
+             delete fort_markers['gym'][gymId];
+           }
+
+           // Add updated markers
+           for (var gymId in gymdata) {
+             if (!gymdata.hasOwnProperty(gymId)) {
+               // inherited, not interesting to us
+               continue;
+             }
+             var p = gymdata[gymId];
+
+             //console.log("Adding marker " + p.id);
+
+             var infowindow = new google.maps.InfoWindow({});
+
+             var team = getTeamFromNum(p.team);
+             var image = "./img/forts/"+team+".png";
+
+             var marker = new google.maps.Marker({
+               map: map,
+               position: {lat: p.lat, lng: p.lng},
+               label: "",
+               details: "<b>"+team+" Gym</b><br>Points: " + p.points + "<br>Lat: "+p.lat+"<br>Long: "+p.lng + "<br>Guard: " + p.guard,
+               icon: image
+             });
+
+             var listenerPair = [
+               google.maps.event.addListener(marker, 'mouseover', function() {
+                 infowindow.setContent(this.details);
+                 infowindow.open(map, this);
+               }),
+               google.maps.event.addListener(marker, 'mouseout', function() {
+                 infowindow.close(map, this);
+               })
+             ];
+
+             marker.listeners = listenerPair;
+             fort_markers['gym'][gymId] = marker;
+           }
+         });
+      }
+
+      function getPokestop() {
+         // get Pokestop data
+         getFile("pkstop.json", true, function(response) {
+           console.log("Refreshing pokestop data...");
+           stopdata = JSON.parse(response);
+
+           // Clear markers
+           for (var stopId in fort_markers['stop']) {
+             if (!fort_markers['stop'].hasOwnProperty(stopId)) {
+               continue;
+             }
+             var marker = markers[stopId];
+             marker.listeners[0].remove();
+             marker.listeners[1].remove();
+             marker.setMap(null);
+
+             delete fort_markers['stop'][stopId];
+           }
+
+           // Add updated markers
+           for (var stopId in stopdata) {
+             if (!stopdata.hasOwnProperty(stopId)) {
+               // inherited, not interesting to us
+               continue;
+             }
+             var p = stopdata[stopId];
+
+             //console.log("Adding marker " + p.id);
+
+             var infowindow = new google.maps.InfoWindow({});
+
+             var lure = p.timeleft>0? "Lured": "";
+             var image = "./img/forts/Pstop"+lure+".png";
+             var detail_str = "<b>Pokestop "+lure+"</b><br>" + (p.timeleft>0? "Lure timeleft: "+p.timeleft+"<br>":"") + "Lat: "+p.lat+"<br>Long: "+p.lng;
+
+             var marker = new google.maps.Marker({
+               map: map,
+               position: {lat: p.lat, lng: p.lng},
+               label: "",
+               details: detail_str,
+               icon: image
+             });
+
+             var listenerPair = [
+               google.maps.event.addListener(marker, 'mouseover', function() {
+                 infowindow.setContent(this.details);
+                 infowindow.open(map, this);
+               }),
+               google.maps.event.addListener(marker, 'mouseout', function() {
+                 infowindow.close(map, this);
+               })
+             ];
+
+             marker.listeners = listenerPair;
+             fort_markers['stop'][stopId] = marker;
+           }
+         });
+      }
+
+      var preLength = -1;
+      function refreshData() {
+        getFile("pkmn.json", true, function(response) {
+          console.log("Refreshing pokemon data...");
+          pkmndata = JSON.parse(response);
+
+          if (preLength != response.length) {
+            preLength = response.length;
+            // Clear markers
+            for (var pokehash in markers) {
+              if (!markers.hasOwnProperty(pokehash)) {
+                continue;
+              }
+              var marker = markers[pokehash];
+              marker.listeners[0].remove();
+              marker.listeners[1].remove();
+              marker.setMap(null);
+
+              delete markers[pokehash];
+            }
+            layers = [];
+
+            // Add updated markers
+            for (var pokehash in pkmndata) {
+              if (!pkmndata.hasOwnProperty(pokehash)) {
+                // inherited, not interesting to us
+                continue;
+              }
+              var p = pkmndata[pokehash];
+              if (!updated) {
+                map.setZoom(16);
+                map.panTo({lat: p.lat, lng: p.lng});
+                updated = true;
+              }
+
+              if(layers.indexOf(p.name) == -1){
+                layers.push(p.name);
+              }
+
+              if(hidden_layers.indexOf(p.name) == -1){
+                // Pokemon not hidden
+                console.log("Adding marker " + p.name);
+
+                var detail_str = "<b>"+p.name+"</b><br>Time left: " + formatSeconds(p.timeleft) + "<br>Lat: "+p.lat+"<br>Long: "+p.lng+"<br><a href='https://www.google.com/maps/dir/Current+Location/"+p.lat+","+p.lng+"' target='_blank' title=\"Go Catch \'Em!\">Go Catch \'Em!</a></div>";
+
+                if (markers.hasOwnProperty(pokehash)) {
+                  markers[pokehash].details = detail_str;
+                  continue;
+                }
+
+                var infowindow = new google.maps.InfoWindow({
+                });
+
+                var image = getImage(p);
+
+                var marker = new google.maps.Marker({
+                  map: map,
+                  position: {lat: p.lat, lng: p.lng},
+                  label: "",
+                  details: detail_str,
+                  icon: image
+                });
+
+                var listenerPair = [
+                 google.maps.event.addListener(marker, 'mouseover', function() {
+                   infowindow.setContent(this.details);
+                   infowindow.open(map, this);
+                 }),
+                 google.maps.event.addListener(marker, 'mouseout', function() {
+                   infowindow.close(map, this);
+                 }),
+                 google.maps.event.addListener(marker, 'click', function() {
+                   if(copyToClipboard(this.position.lat()+", "+this.position.lng())){
+                     alert("Location Copied!");
+                   }else{
+                     window.prompt("Copy to clipboard manually: Ctrl+C, Enter", text);
+                   }
+                 })
+                ];
+
+                marker.listeners = listenerPair;
+                markers[pokehash] = marker;
+              }
+            }
+
+            // Draw layer manager
+            var list = document.getElementById('legend-list');
+            var content = [];
+            for (var id in layers) {
+              var pkmn = layers[id];
+              var checked = hidden_layers.indexOf(pkmn) != -1 ? "checked": "";
+              content.push("<li><input type='checkbox' id='" + pkmn +  "'" +
+              " onclick='toggleLayer(this.checked, this.id)' "+checked+"\/>" +
+              pkmn + "<\/li>");
+            }
+            if(list != null){
+              list.innerHTML = content.join('');
+            }
+          }
+        });
+      }
+
+      pkmndata = {};
+      pkstopdata = {};
+      gymdata = {};
+      map = null;
+      markers = {};
+      fort_markers = {
+       'gym': {},
+       'stop': {}
+      };
+      hidden_layers = [];
+      layers = [];
+      updated = false;
+
+
+      getFile("gmap.json", false, function(configData) {
+        config = JSON.parse(configData)
+        console.log("Using api key: " + config.GOOGLE_MAPS_API_KEY);
+        loadScript("https://maps.googleapis.com/maps/api/js?key=" + config.GOOGLE_MAPS_API_KEY + "&libraries=drawing&callback=initMap");
+      });
+
+      function initMap() {
+        console.log("Initializing map");
+
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: {lat: 0, lng: 0},
+          zoom: 4
+        });
+
+        var legend = document.createElement('div');
+        legend.id = 'legend';
+        var content = [];
+        content.push('<div id="legend-title"><h3><img id="legend-icon" src="./img/hide.png" onclick="toggleLegend();" />Toolbar</h3></div>');
+        content.push('<div id="legend-content">');
+        content.push('<div id="legend-hide-pokestop"><button onclick="getPokestop()">Refresh Pokestop</button></div>');
+        content.push('<div id="legend-hide-gym"><button onclick="getGym()">Refresh Gym</button></div>');
+        content.push('<div id="legend-hide-pkmn"><h3>Hide Pokemon</h3><div id="legend-list"></div></div>');
+        content.push('</div>');
+        legend.innerHTML = content.join('');
+        legend.index = 1;
+        map.controls[google.maps.ControlPosition.RIGHT_TOP].push(legend);
+
+        setInterval(refreshData, 1000);
+      }
+    </script>
+  </body>
+</html>

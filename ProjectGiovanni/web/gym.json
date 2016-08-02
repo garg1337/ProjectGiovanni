@@ -1,0 +1,58 @@
+{
+  "05e035e830be4f959458e98d79636f5e.16": {
+    "guard": "Clefable", 
+    "points": 10067, 
+    "team": 2, 
+    "lat": 47.665222, 
+    "lng": -122.119801, 
+    "id": "05e035e830be4f959458e98d79636f5e.16"
+  }, 
+  "b4d95a493bd04e58a6c6554971b07fd0.16": {
+    "guard": "Vaporeon", 
+    "points": 8493, 
+    "team": 1, 
+    "lat": 47.673298, 
+    "lng": -122.125256, 
+    "id": "b4d95a493bd04e58a6c6554971b07fd0.16"
+  }, 
+  "d38924fc05f649cd923bdecc6afffdbe.12": {
+    "guard": "Lapras", 
+    "points": 3109, 
+    "team": 2, 
+    "lat": 47.67325, 
+    "lng": -122.13216, 
+    "id": "d38924fc05f649cd923bdecc6afffdbe.12"
+  }, 
+  "b0104e64daaf474996cd44327b323c47.16": {
+    "guard": "Dragonite", 
+    "points": 22077, 
+    "team": 2, 
+    "lat": 47.675219, 
+    "lng": -122.130386, 
+    "id": "b0104e64daaf474996cd44327b323c47.16"
+  }, 
+  "afb69d786ebf438c92f288eeccea197c.16": {
+    "guard": "Vaporeon", 
+    "points": 8336, 
+    "team": 1, 
+    "lat": 47.67417, 
+    "lng": -122.123056, 
+    "id": "afb69d786ebf438c92f288eeccea197c.16"
+  }, 
+  "c2f1e99aa7ac4becbdd15d58f5374574.16": {
+    "guard": "Lapras", 
+    "points": 5252, 
+    "team": 3, 
+    "lat": 47.669839, 
+    "lng": -122.130934, 
+    "id": "c2f1e99aa7ac4becbdd15d58f5374574.16"
+  }, 
+  "a140b3ebf51d4776a950541f8932c68c.16": {
+    "guard": "Vaporeon", 
+    "points": 6000, 
+    "team": 1, 
+    "lat": 47.664054, 
+    "lng": -122.12451, 
+    "id": "a140b3ebf51d4776a950541f8932c68c.16"
+  }
+}
